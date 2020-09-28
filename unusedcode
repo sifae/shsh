@@ -1,0 +1,21 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include "src/proj.h"
+
+int main(int argc, char *argv[])
+{
+  if(argc > 2) {
+    fprintf(stderr, "Too many arguments"); 
+    return EXIT_FAILURE;
+  }
+  int init_size = (argc==1) ? BUF_BLOCK_SIZE : atoi(argv[1]);
+  if(init_size > 10000){
+    fprintf(stderr, "Init size too large");
+    return EXIT_FAILURE;
+  }
+  init_size = (init_size <= 0) ? BUF_BLOCK_SIZE : init_size; 
+  struct list *str = malloc(init_size * sizeof(*str));
+
+  read_str(str, init_size);
+  return 0;
+}
