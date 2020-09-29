@@ -18,4 +18,4 @@ $(OBJDIR)/%.o: %.c $(HEADERS)
 	$(CC) -c $(CFLAGS) $@ $<
 
 clean:  
-	rm -f $(OBJ)
+	rm -f $(OBJ) $(TARGET)

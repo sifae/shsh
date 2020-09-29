@@ -21,36 +21,13 @@ void check_allocated_mem(void *ptr)
   }
 }
 
-void reset_vars(
-    int *str_len, int *str_count, 
-    int *brace_flag, int *eow_flag, 
-    LIST **buf, LIST **buf_ptr 
-    )
+void list_write_char(LIST *buf, char *tmp, int *pos, const int *def_str_size)
 {
-  *str_len = 0; *str_count = 1; *brace_flag = 0; *eow_flag = 0;
-  *buf = malloc(sizeof(**buf));
-  check_allocated_mem(*buf);
-  (*buf)->str = calloc(DEF_STR_SIZE, sizeof(*(*buf)->str));
-  check_allocated_mem((*buf)->str);
-  *buf_ptr = *buf;
-}
-
-void print_str(LIST *buf, int n){
-  //Description in the header file
-  int i;
-  for(i = 0;buf != NULL && i < n; i++){
-   printf("[%s]\n", buf->str);
-   buf = buf->next;
-  }
-}
-
-void list_write_char(LIST *buf, char *tmp, int *pos)
-{
-  //If the string length is <n> times <DEF_STR_SIZE>
-  //reallocate <n+1>*<DEF_STR_SIZE> as much memory for it
-  //Handle only boundary case
-  if((*pos-1)/DEF_STR_SIZE != *pos/DEF_STR_SIZE){
-    buf->str = realloc(buf->str,DEF_STR_SIZE*(*pos/DEF_STR_SIZE+1));
+  /*If the string length is <n> times <def_str_size>*/
+  /*reallocate <n+1>*<def_str_size> as much memory for it*/
+  /*Handle only boundary case*/
+  if((*pos-1) / *def_str_size != *pos / *def_str_size){
+    buf->str = realloc(buf->str, *def_str_size * (*pos / *def_str_size+1));
     check_allocated_mem(buf->str);
   }
   *(buf->str+*pos) = *tmp;
@@ -68,72 +45,105 @@ void list_rm_last(LIST *head)
   tmp->next = NULL;
 }
 
-void read_str()
-{  
-  char tmp;       //Temp var to store current char
-  int brace_flag; //Open br => 1, Cl br => 0
-  int eow_flag;   //End of word flag(just to handle multiple spaces)
-  int str_count;  //Nubmer of entered strings
-  int str_len;    //Current string lenght
-  LIST *head;     //Buffer with strings
-  LIST *buf_ptr;  //Buffer 'iterator'
+/*Allocate memory for next sring*/
+void list_allocate_next(LIST **buf_it, const int *def_str_size)
+{
+  (*buf_it)->next = malloc(sizeof(**buf_it));
+  check_allocated_mem((*buf_it)->next);
+  *buf_it = (*buf_it)->next;
+  (*buf_it)->str = calloc(*def_str_size, sizeof(*(*buf_it)->str));
+  check_allocated_mem((*buf_it)->str);
+}
 
-  reset_vars(&str_len, &str_count, &brace_flag, 
-      &eow_flag, &head, &buf_ptr);
+void reset_vars(
+    int *str_len, int *str_count, 
+    int *brace_flag, int *eow_flag, 
+    const int *def_str_size,
+    LIST **buf, LIST **buf_it 
+    )
+{
+  *str_len = 0; *str_count = 1; *brace_flag = 0; *eow_flag = 0;
+  *buf = malloc(sizeof(**buf));
+  check_allocated_mem(*buf);
+  (*buf)->str = calloc(*def_str_size, sizeof(*(*buf)->str));
+  check_allocated_mem((*buf)->str);
+  *buf_it = *buf;
+}
+
+/*Description in the header file*/  
+void print_str(LIST *buf, int n)
+{
+  int i;
+  for(i = 0;buf != NULL && i < n; i++){
+    printf("[%s]\n", buf->str);
+    buf = buf->next;
+  }
+}
+
+int read_str(const int def_str_size)
+{
+  char tmp;           /* Temp var to store current char*/
+  int brace_flag;     /* Open br => 1, Cl br => 0*/
+  int eow_flag;       /* End of word flag(just to handle multiple spaces)*/
+  int cur_str_count;  /* Current Nubmer of entered strings*/
+  int cur_str_len;    /* Current string lenght*/
+  int gl_str_count=0; /* Global string counter*/
+  LIST *head;         /* Buffer with strings*/
+  LIST *buf_it;       /* Buffer 'iterator'*/
+
+  reset_vars(&cur_str_len, &cur_str_count, &brace_flag, 
+      &eow_flag, &def_str_size, &head, &buf_it);
 
   printf(">> ");
   while((tmp = getchar()) != EOF){
     switch(tmp) {
       case '\n':
-        buf_ptr->next = NULL;
-        //Current line ends with spaces
+        buf_it->next = NULL;
+        /*Current line ends with spaces*/
         if(eow_flag){
-          str_count--;
+          cur_str_count--;
           list_rm_last(head);
         } else {
-          //Add 'end of string' char
-          *(buf_ptr->str+str_len) = '\0';
+          /*Add 'end of string' char*/
+          *(buf_it->str+cur_str_len) = '\0';
         }
-        //Handle odd number of braces case
+        /*Handle odd number of braces case*/
         if(brace_flag){
           fprintf(stderr, "Odd number of quotation marks\n");
         } else {
-          //Print entered strings
-          print_str(head, str_count);
+          /*Print entered strings*/
+          print_str(head, cur_str_count);
         }
         printf(">> ");        
-        //Reset everything
+        /*Reset everything*/
         free_list(head);
-        reset_vars(&str_len, &str_count, &brace_flag,
-            &eow_flag, &head, &buf_ptr);
+        gl_str_count += cur_str_count;
+        reset_vars(&cur_str_len, &cur_str_count, &brace_flag,
+            &eow_flag, &def_str_size, &head, &buf_it);
         continue;
       case '"':
-        str_count += brace_flag;
+        cur_str_count += brace_flag;
         brace_flag = !brace_flag;
         continue;
       case ' ':
-        //Handle multiple spaces case
-        if(eow_flag) continue;
-        //Handle "abc def" case
+        /*Handle multiple spaces case*/
+        if(eow_flag) 
+          continue;
+        /*Handle "abc def" case*/
         if(brace_flag){
-          list_write_char(buf_ptr, &tmp, &str_len);
+          list_write_char(buf_it, &tmp, &cur_str_len, &def_str_size);
           continue;
         }
-        //Add 'end of string' char
-        *(buf_ptr->str+str_len) = '\0';
-        eow_flag = 1; str_len = 0; str_count += !brace_flag;
-        
-        //Allocate memory for next sring
-        buf_ptr->next = malloc(sizeof(*buf_ptr));
-        check_allocated_mem(buf_ptr->next);
-        buf_ptr = buf_ptr->next;
-        buf_ptr->str = calloc(DEF_STR_SIZE, sizeof(*buf_ptr->str));
-        check_allocated_mem(buf_ptr->str);
+        /*Add 'end of string' char*/
+        *(buf_it->str+cur_str_len) = '\0';
+        eow_flag = 1; cur_str_len = 0; cur_str_count += !brace_flag;   
+        list_allocate_next(&buf_it, &def_str_size);
         continue;
     }
     eow_flag = 0;
-    list_write_char(buf_ptr, &tmp, &str_len);
+    list_write_char(buf_it, &tmp, &cur_str_len, &def_str_size);
   }
-  buf_ptr->next = NULL;
+  buf_it->next = NULL;
   free_list(head);
+  return gl_str_count;
 }
