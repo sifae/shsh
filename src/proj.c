@@ -2,7 +2,15 @@
 #include <stdlib.h>
 #include "proj.h"
 
-void free_list(LIST *head)
+void check_allocated_mem(void *ptr)
+{
+  if(!ptr){
+    fprintf(stderr, "Allocation error\n");
+    exit(EXIT_FAILURE);
+  }
+}
+
+void list_free(LIST *head)
 {
   LIST *tmp;
   while(head != NULL){
@@ -13,24 +21,16 @@ void free_list(LIST *head)
   }
 }
 
-void check_allocated_mem(void *ptr)
-{
-  if(!ptr){
-    fprintf(stderr, "Allocation error\n");
-    exit(EXIT_FAILURE);
-  }
-}
-
-void list_write_char(LIST *buf, char *tmp, int *pos, const int *def_str_size)
+void list_write_char(LIST *head, char *tmp, int *pos, const int *def_str_size)
 {
   /*If the string length is <n> times <def_str_size>*/
   /*reallocate <n+1>*<def_str_size> as much memory for it*/
   /*Handle only boundary case*/
   if((*pos-1) / *def_str_size != *pos / *def_str_size){
-    buf->str = realloc(buf->str, *def_str_size * (*pos / *def_str_size+1));
-    check_allocated_mem(buf->str);
+    head->str = realloc(head->str, *def_str_size * (*pos / *def_str_size+1));
+    check_allocated_mem(head->str);
   }
-  *(buf->str+*pos) = *tmp;
+  *(head->str+*pos) = *tmp;
   (*pos)++;
 }
 
@@ -46,84 +46,60 @@ void list_rm_last(LIST *head)
 }
 
 /*Allocate memory for next sring*/
-void list_allocate_next(LIST **buf_it, const int *def_str_size)
+void list_allocate_next(LIST **head, const int *def_str_size)
 {
-  (*buf_it)->next = malloc(sizeof(**buf_it));
-  check_allocated_mem((*buf_it)->next);
-  *buf_it = (*buf_it)->next;
-  (*buf_it)->str = calloc(*def_str_size, sizeof(*(*buf_it)->str));
-  check_allocated_mem((*buf_it)->str);
+  (*head)->next = malloc(sizeof(**head));
+  check_allocated_mem((*head)->next);
+  *head = (*head)->next;
+  (*head)->str = calloc(*def_str_size, sizeof(*(*head)->str));
+  check_allocated_mem((*head)->str);
+  (*head)->next = NULL;
 }
 
-void reset_vars(
-    int *str_len, int *str_count, 
-    int *brace_flag, int *eow_flag, 
-    const int *def_str_size,
-    LIST **buf, LIST **buf_it 
-    )
+void list_init(LIST **head, const int *def_str_size)
 {
-  *str_len = 0; *str_count = 1; *brace_flag = 0; *eow_flag = 0;
-  *buf = malloc(sizeof(**buf));
-  check_allocated_mem(*buf);
-  (*buf)->str = calloc(*def_str_size, sizeof(*(*buf)->str));
-  check_allocated_mem((*buf)->str);
-  *buf_it = *buf;
+  *head = malloc(sizeof(**head));
+  check_allocated_mem(*head);
+  (*head)->str = calloc(*def_str_size, sizeof(*(*head)->str));
+  check_allocated_mem((*head)->str);
+  (*head)->next = NULL;
 }
 
-/*Description in the header file*/  
-void print_str(LIST *buf, int n)
+void list_print(LIST *head, int n)
 {
   int i;
-  for(i = 0;buf != NULL && i < n; i++){
-    printf("[%s]\n", buf->str);
-    buf = buf->next;
+  for(i = 0; head != NULL && i < n; i++){
+    printf("[%s]\n", head->str);
+    head = head->next;
   }
 }
 
-int read_str(const int def_str_size)
+int check_errors(int *brace_flag, int *eow_flag, int *str_count)
 {
-  char tmp;           /* Temp var to store current char*/
-  int brace_flag;     /* Open br => 1, Cl br => 0*/
-  int eow_flag;       /* End of word flag(just to handle multiple spaces)*/
-  int cur_str_count;  /* Current Nubmer of entered strings*/
-  int cur_str_len;    /* Current string lenght*/
-  int gl_str_count=0; /* Global string counter*/
-  LIST *head;         /* Buffer with strings*/
-  LIST *buf_it;       /* Buffer 'iterator'*/
+  /*Handle odd number of braces case*/
+  if(*brace_flag)
+    return ODDBR;
+  /*Current line ends with spaces*/
+  if(*eow_flag){
+    return *str_count - 1;
+  } 
+  return *str_count;
+}
 
-  reset_vars(&cur_str_len, &cur_str_count, &brace_flag, 
-      &eow_flag, &def_str_size, &head, &buf_it);
-
+int read_str(LIST *head, const int *def_str_size)
+{
+  char tmp;
+  int str_len = 0, str_count = 1;
+  int brace_flag = 0;             /* Open br => 1, Cl br => 0*/
+  int eow_flag = 0;               /* End of word flag*/
   printf(">> ");
-  while((tmp = getchar()) != EOF){
-    switch(tmp) {
-      case '\n':
-        buf_it->next = NULL;
-        /*Current line ends with spaces*/
-        if(eow_flag){
-          cur_str_count--;
-          list_rm_last(head);
-        } else {
-          /*Add 'end of string' char*/
-          *(buf_it->str+cur_str_len) = '\0';
-        }
-        /*Handle odd number of braces case*/
-        if(brace_flag){
-          fprintf(stderr, "Odd number of quotation marks\n");
-        } else {
-          /*Print entered strings*/
-          print_str(head, cur_str_count);
-        }
-        printf(">> ");        
-        /*Reset everything*/
-        free_list(head);
-        gl_str_count += cur_str_count;
-        reset_vars(&cur_str_len, &cur_str_count, &brace_flag,
-            &eow_flag, &def_str_size, &head, &buf_it);
-        continue;
+  while((tmp = getchar()) != '\n'){
+    switch(tmp){
+      case EOF:
+        return EOF;
       case '"':
-        cur_str_count += brace_flag;
         brace_flag = !brace_flag;
+        str_count += (str_count==1) ? 0 : brace_flag; /*single word in br */
         continue;
       case ' ':
         /*Handle multiple spaces case*/
@@ -131,19 +107,39 @@ int read_str(const int def_str_size)
           continue;
         /*Handle "abc def" case*/
         if(brace_flag){
-          list_write_char(buf_it, &tmp, &cur_str_len, &def_str_size);
+          list_write_char(head, &tmp, &str_len, def_str_size);
           continue;
         }
-        /*Add 'end of string' char*/
-        *(buf_it->str+cur_str_len) = '\0';
-        eow_flag = 1; cur_str_len = 0; cur_str_count += !brace_flag;   
-        list_allocate_next(&buf_it, &def_str_size);
+        head->str[str_len] = '\0';
+        eow_flag = 1; str_len = 0; str_count += !brace_flag;   
+        list_allocate_next(&head, def_str_size);
         continue;
     }
     eow_flag = 0;
-    list_write_char(buf_it, &tmp, &cur_str_len, &def_str_size);
+    list_write_char(head, &tmp, &str_len, def_str_size);
+  } 
+  head->str[str_len] = '\0';
+  return check_errors(&brace_flag, &eow_flag, &str_count); 
+}
+
+int stream(const int def_str_size)
+{
+  int res, str_count = 0;
+  LIST *head;
+  list_init(&head, &def_str_size);
+  res = read_str(head, &def_str_size);
+
+  while(res != EOF){
+    if(res == ODDBR){
+      fprintf(stderr, "Odd number of quotation marks\n");
+    } else {
+      str_count += res;
+      list_print(head, res);
+      list_free(head);
+      list_init(&head, &def_str_size);
+    }
+    res = read_str(head, &def_str_size);
   }
-  buf_it->next = NULL;
-  free_list(head);
-  return gl_str_count;
+  list_free(head);
+  return str_count;  
 }

@@ -15,6 +15,6 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
   init_str_size = (init_str_size <= 0) ? def_str_size : init_str_size; 
-  printf("Strings read: %d\n",read_str(init_str_size));
+  printf("Strings read: %d\n", stream(init_str_size));
   return 0;
 }
