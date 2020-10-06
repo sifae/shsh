@@ -42,8 +42,7 @@ void list_allocate_next(list **head, const int *def_str_size)
   (*head)->next = malloc(sizeof(**head));
   check_allocated_mem((*head)->next);
   *head = (*head)->next;
-  (*head)->str = calloc(*def_str_size, 
-      *def_str_size * sizeof(*(*head)->str));
+  (*head)->str = calloc(*def_str_size + 1, sizeof(*(*head)->str));
   check_allocated_mem((*head)->str);
   (*head)->next = NULL;
 }
@@ -52,8 +51,7 @@ void list_init(list **head, const int *def_str_size)
 {
   *head = malloc(sizeof(**head));
   check_allocated_mem(*head);
-  (*head)->str = calloc(*def_str_size, 
-      *def_str_size * sizeof(*(*head)->str));
+  (*head)->str = calloc(*def_str_size + 1, sizeof(*(*head)->str));
   check_allocated_mem((*head)->str);
   (*head)->next = NULL;
 }
