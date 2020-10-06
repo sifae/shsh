@@ -1,7 +1,8 @@
-#define LIST struct list
 #define ODDBR 0
 
-struct list{
+typedef struct list list; 
+
+struct list {
   char *str;
   struct list *next;
 };
@@ -14,4 +15,4 @@ int stream(const int def_str_size);
  * If actual buffer size is less than <n> 
  * only available strings will be processed
 */
-void print_str(LIST *buf, int n);
+void print_str(list *buf, int n);
