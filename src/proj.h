@@ -1,4 +1,6 @@
-#define ODDBR 0
+#define ODDBR 0 /* 'Exception' status*/
+#define SLNT 1  /*  Execution  status*/
+#define NORM 0  /*  Execution  status*/
 
 typedef struct list list; 
 

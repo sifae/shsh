@@ -56,13 +56,29 @@ void list_init(list **head, const int *def_str_size)
   (*head)->next = NULL;
 }
 
-void list_print(list *head, const int n)
+void list_print(const list *head, const int n)
 {
   int i;
   for(i = 0; head != NULL && i < n; i++){
     printf("[%s]\n", head->str);
     head = head->next;
   }
+}
+
+/* Return command execution status: SLNT(silent) or NORM*/
+int list_to_exec_argv(char **dest, const list *src, const int *list_size)
+{
+  int i;
+  dest = malloc(*list_size * sizeof(*dest));
+  for(i = 0; i < *list_size - 1; i++){
+    dest[i] = src->str;
+    src = src->next;
+  }
+  if(src->next->str[0] == '&'){
+    return SLNT;
+  }
+  dest[*list_size - 1] = src->next->str;
+  return NORM;
 }
 
 int check_errors(const int *brace_flag, 
@@ -101,15 +117,13 @@ int read_str(list *head, const int *def_str_size)
           list_write_char(head, &str_len, &tmp, def_str_size);
           continue;
         }
-        head->str[str_len] = '\0';
         eow_flag = 1; str_len = 0; str_count += !brace_flag;   
         list_allocate_next(&head, def_str_size);
         continue;
     }
     eow_flag = 0;
     list_write_char(head, &str_len, &tmp, def_str_size);
-  } 
-  head->str[str_len] = '\0';
+  }
   return check_errors(&brace_flag, &eow_flag, &str_count); 
 }
 
@@ -124,8 +138,7 @@ int stream(const int def_str_size)
     if(res == ODDBR){
       fprintf(stderr, "Odd number of quotation marks\n");
     } else {
-      str_count += res;
-      list_print(head, res);
+      str_count += 1;
       list_free(head);
       list_init(&head, &def_str_size);
     }
