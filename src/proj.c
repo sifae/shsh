@@ -1,12 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "proj.h"
 
 void check_allocated_mem(void *ptr)
 {
   if(!ptr){
     fprintf(stderr, "Allocation error\n");
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 }
 
@@ -66,7 +67,7 @@ void list_print(const list *head, const int n)
 }
 
 /* Return command execution status: SLNT(silent) or NORM*/
-int list_to_exec_argv(char **dest, const list *src, const int *list_size)
+int form_exec_argv(char **dest, const list *src, const int *list_size)
 {
   int i;
   dest = malloc(*list_size * sizeof(*dest));
@@ -79,6 +80,21 @@ int list_to_exec_argv(char **dest, const list *src, const int *list_size)
   }
   dest[*list_size - 1] = src->next->str;
   return NORM;
+}
+
+void exec_command(char *const *argv, const int status)
+{
+  pid_t pid;
+  switch(pid = fork()){
+    case -1:
+      perror("fork");
+      exit(1);
+    case 0:
+      //
+    default:
+      //
+  }
+  return;
 }
 
 int check_errors(const int *brace_flag, 
@@ -129,16 +145,18 @@ int read_str(list *head, const int *def_str_size)
 
 int stream(const int def_str_size)
 {
-  int res, str_count = 0;
+  int res, exec_status, str_count = 0;
   list *head;
+  char **exec_argv;
+
   list_init(&head, &def_str_size);
   res = read_str(head, &def_str_size);
-
   while(res != EOF){
     if(res == ODDBR){
       fprintf(stderr, "Odd number of quotation marks\n");
     } else {
       str_count += 1;
+      exec_status = form_exec_argv(exec_argv, head, &res); 
       list_free(head);
       list_init(&head, &def_str_size);
     }

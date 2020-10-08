@@ -10,7 +10,7 @@ struct list {
 };
 
 /* Read strings from stdin and write it to stdout*/
-/* Returns number of entered strings*/
+/* Returns number of executed commands*/
 int stream(const int def_str_size);
 
 /* Write <n> strings from buffer to stdout
