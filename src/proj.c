@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <wait.h>
+#include <signal.h>
 #include "proj.h"
 
 void check_allocated_mem(void *ptr)
@@ -36,7 +37,7 @@ int form_exec_argv(char **dest, const list *src, const int *len)
 
 void exec_command(char *const *argv, const int status)
 {
-  int pid;
+  int pid, sid, p;
   if(status == NORM){
     switch(pid = fork()){
       case -1:
@@ -46,9 +47,29 @@ void exec_command(char *const *argv, const int status)
         execvp(argv[0], argv);
         perror(argv[0]);
         exit(1);
-      default:
-        wait(NULL);
     }
+    p = wait(NULL);
+    while(p != pid)
+      p = wait(NULL);
+  } else {
+    pid = fork();
+    if(pid < 0){
+      perror("fork");
+      exit(1);
+    }
+    if(pid > 0){
+      printf("%d Started\n", pid);
+      return;
+    }
+    sid = setsid();
+    if(sid < 0) exit(1);
+    /* Close stdin. stdout and stderr*/
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+    execvp(argv[0], argv);
+    perror(argv[0]);
+    exit(1);
   }
 }
 
@@ -111,7 +132,7 @@ void list_exec(const list *head, const int *len)
 { 
   int exec_status;
   char **exec_argv;
-  /* Add one argument for NULL pointer*/
+  /* Add position for NULL pointer*/
   exec_argv = malloc((*len+1) * sizeof(*exec_argv)); 
   exec_status = form_exec_argv(exec_argv, head, len);
   exec_command(exec_argv, exec_status);
@@ -122,7 +143,7 @@ void prompt()
 {
   long size = pathconf(".", _PC_PATH_MAX);
   char cwd[size];
-  if (getcwd(cwd, size) != NULL) {
+  if(getcwd(cwd, size) != NULL) {
      printf(BLU "%s" RESET " " RED "$" RESET " ", cwd);
   } else {
      perror("getcwd");
