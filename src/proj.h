@@ -1,4 +1,4 @@
-#define ODDBR -2 /* 'Exception' status*/
+#define ODDBR 0 /* 'Exception' status*/
 #define SLNT 1  /*  Execution  status*/
 #define NORM 0  /*  Execution  status*/
 
