@@ -1,7 +1,7 @@
 CC=gcc
 SRCDIR=./src
 OBJDIR=./obj
-CFLAGS=-I$(SRCDIR) -g -o
+CFLAGS=-I$(SRCDIR) -Wall -g -o
 HEADERS=proj.h
 SOURCES=proj.c main.c
 TARGET=shsh

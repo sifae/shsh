@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <wait.h>
 #include "proj.h"
 
 void check_allocated_mem(void *ptr)
@@ -8,6 +9,46 @@ void check_allocated_mem(void *ptr)
   if(!ptr){
     fprintf(stderr, "Allocation error\n");
     exit(1);
+  }
+}
+
+/* Return command execution status: SLNT(silent) or NORM*/
+int form_exec_argv(char **dest, const list *src, const int *len)
+{
+  int i;
+  if(src->next == NULL){
+    dest[0] = src->str;
+    dest[1] = NULL;
+    return NORM;
+  }
+  for(i = 0; i < *len - 1; i++){
+    dest[i] = src->str;
+    src = src->next;
+  }
+  if(src->str[0] == '&'){
+    dest[i] = NULL;
+    return SLNT;
+  }
+  dest[i] = src->str;
+  dest[i+1] = NULL;
+  return NORM;
+}
+
+void exec_command(char *const *argv, const int status)
+{
+  int pid;
+  if(status == NORM){
+    switch(pid = fork()){
+      case -1:
+        perror("fork");
+        exit(1);
+      case 0:
+        execvp(argv[0], argv);
+        perror(argv[0]);
+        exit(1);
+      default:
+        wait(NULL);
+    }
   }
 }
 
@@ -26,9 +67,9 @@ void list_write_char(list *head, int *pos,
                      const char *tmp, 
                      const int *def_str_size)
 {
-  /*If the string length is <n> times <def_str_size>*/
-  /*reallocate <n+1>*<def_str_size> as much memory for it*/
-  /*Handle only boundary case*/
+  /* If the string length is <n> times <def_str_size>*/
+  /* reallocate <n+1>*<def_str_size> as much memory for it*/
+  /* Handle only boundary case*/
   if((*pos-1) / *def_str_size != *pos / *def_str_size){
     head->str = realloc(head->str, *def_str_size * (*pos / *def_str_size+1));
     check_allocated_mem(head->str);
@@ -37,7 +78,7 @@ void list_write_char(list *head, int *pos,
   (*pos)++;
 }
 
-/*Allocate memory for next sring*/
+/* Allocate memory for next sring*/
 void list_allocate_next(list **head, const int *def_str_size)
 {
   (*head)->next = malloc(sizeof(**head));
@@ -66,47 +107,40 @@ void list_print(const list *head, const int n)
   }
 }
 
-/* Return command execution status: SLNT(silent) or NORM*/
-int form_exec_argv(char **dest, const list *src, const int *list_size)
-{
-  int i;
-  dest = malloc(*list_size * sizeof(*dest));
-  for(i = 0; i < *list_size - 1; i++){
-    dest[i] = src->str;
-    src = src->next;
-  }
-  if(src->next->str[0] == '&'){
-    return SLNT;
-  }
-  dest[*list_size - 1] = src->next->str;
-  return NORM;
+void list_exec(const list *head, const int *len)
+{ 
+  int exec_status;
+  char **exec_argv;
+  /* Add one argument for NULL pointer*/
+  exec_argv = malloc((*len+1) * sizeof(*exec_argv)); 
+  exec_status = form_exec_argv(exec_argv, head, len);
+  exec_command(exec_argv, exec_status);
+  free(exec_argv);
 }
 
-void exec_command(char *const *argv, const int status)
+void prompt()
 {
-  pid_t pid;
-  switch(pid = fork()){
-    case -1:
-      perror("fork");
-      exit(1);
-    case 0:
-      //
-    default:
-      //
+  long size = pathconf(".", _PC_PATH_MAX);
+  char cwd[size];
+  if (getcwd(cwd, size) != NULL) {
+     printf(BLU "%s" RESET " " RED "$" RESET " ", cwd);
+  } else {
+     perror("getcwd");
+     exit(1);
   }
-  return;
 }
 
 int check_errors(const int *brace_flag, 
                  const int *eow_flag, 
                  const int *str_count)
 {
-  /*Handle odd number of braces case*/
+  /* Handle odd number of braces case*/
   if(*brace_flag)
     return ODDBR;
-  /*Current line ends with spaces*/
-  if(*eow_flag)
+  /* Current line ends with spaces*/
+  if(*eow_flag){
     return *str_count - 1; 
+  }
   return *str_count;
 }
 
@@ -117,19 +151,18 @@ int read_str(list *head, const int *def_str_size)
   int str_len = 0, str_count = 1;
   int brace_flag = 0;             /* Open br => 1, Cl br => 0*/
   int eow_flag = 0;               /* End of word flag*/
-  printf(">> ");
+  prompt();
   while((tmp = getchar()) != '\n'){
     switch(tmp){
       case EOF:
         return EOF;
       case '"':
         brace_flag = !brace_flag;
-        str_count += (str_count==1) ? 0 : brace_flag; /* Single word in br*/
         continue;
       case ' ': 
-        if(eow_flag)                /* Handle multiple spaces case*/
+        if(eow_flag)              /* Handle multiple spaces case*/
           continue; 
-        if(brace_flag){             /* Handle "abc def" case*/
+        if(brace_flag){           /* Handle "abc def" case*/
           list_write_char(head, &str_len, &tmp, def_str_size);
           continue;
         }
@@ -145,21 +178,22 @@ int read_str(list *head, const int *def_str_size)
 
 int stream(const int def_str_size)
 {
-  int res, exec_status, str_count = 0;
+  int res, str_count = 0;
   list *head;
-  char **exec_argv;
 
   list_init(&head, &def_str_size);
   res = read_str(head, &def_str_size);
   while(res != EOF){
     if(res == ODDBR){
       fprintf(stderr, "Odd number of quotation marks\n");
-    } else {
-      str_count += 1;
-      exec_status = form_exec_argv(exec_argv, head, &res); 
-      list_free(head);
-      list_init(&head, &def_str_size);
+    } else { 
+      if(*head->str != '\0') { /* Check empty input*/
+        list_exec(head, &res);
+        str_count += 1;
+      }
     }
+    list_free(head);
+    list_init(&head, &def_str_size);
     res = read_str(head, &def_str_size);
   }
   list_free(head);
