@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <wait.h>
-#include <signal.h>
 #include "proj.h"
 
 void check_allocated_mem(void *ptr)
@@ -13,64 +12,56 @@ void check_allocated_mem(void *ptr)
   }
 }
 
-/* Return command execution status: SLNT(silent) or NORM*/
-int form_exec_argv(char **dest, const list *src, const int *len)
+/* Return 'parsing' status: 0 or 1*/
+int form_exec_argv(char **dest, const list *src, 
+                   const int *len, const int *exec_stat)
 {
   int i;
-  if(src->next == NULL){
-    dest[0] = src->str;
-    dest[1] = NULL;
-    return NORM;
+  /* Check single '&' char*/
+  if(*src->str == '&' && *exec_stat == SLNT){ 
+    fprintf(stderr, "Error parsing '&'\n");
+    return 1;
   }
   for(i = 0; i < *len - 1; i++){
     dest[i] = src->str;
     src = src->next;
   }
-  if(src->str[0] == '&'){
+  if(*exec_stat == SLNT){/* Ignore last '&'*/
     dest[i] = NULL;
-    return SLNT;
+    return 0;
   }
   dest[i] = src->str;
   dest[i+1] = NULL;
-  return NORM;
+  return 0;
 }
 
-void exec_command(char *const *argv, const int status)
+void exec_command(char *const *argv, const int *status)
 {
-  int pid, sid, p;
-  if(status == NORM){
-    switch(pid = fork()){
-      case -1:
-        perror("fork");
-        exit(1);
-      case 0:
-        execvp(argv[0], argv);
-        perror(argv[0]);
-        exit(1);
-    }
-    p = wait(NULL);
-    while(p != pid)
-      p = wait(NULL);
-  } else {
-    pid = fork();
-    if(pid < 0){
-      perror("fork");
-      exit(1);
-    }
-    if(pid > 0){
+  int pid, p;
+  pid = fork();
+  if(pid < 0){
+    perror("fork");
+    exit(1);
+  }
+  if(pid > 0){
+    if(*status == SLNT) 
       printf("%d Started\n", pid);
-      return;
-    }
-    sid = setsid();
-    if(sid < 0) exit(1);
-    /* Close stdin. stdout and stderr*/
+    else
+      /* Terminate background processes*/
+      while((p = wait(NULL)) != pid) 
+        printf("%d Terminated\n", p);
+    return;
+  }
+  /* Child process*/
+  if(*status == SLNT){
+    /* Close stdin, stdout and stderr*/
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
-    execvp(argv[0], argv);
-    perror(argv[0]);
-    exit(1);
   }
+  execvp(argv[0], argv);
+  perror(argv[0]);
+  exit(1);
 }
 
 void list_free(list *head)
@@ -128,14 +119,15 @@ void list_print(const list *head, const int n)
   }
 }
 
-void list_exec(const list *head, const int *len)
+void list_exec(const list *head, const int *len, const int *exec_stat)
 { 
-  int exec_status;
   char **exec_argv;
+  int res;
   /* Add position for NULL pointer*/
   exec_argv = malloc((*len+1) * sizeof(*exec_argv)); 
-  exec_status = form_exec_argv(exec_argv, head, len);
-  exec_command(exec_argv, exec_status);
+  res = form_exec_argv(exec_argv, head, len, exec_stat);
+  if(res == 0)
+    exec_command(exec_argv, exec_stat);
   free(exec_argv);
 }
 
@@ -166,7 +158,7 @@ int check_errors(const int *brace_flag,
 }
 
 /* Return EOF exception, ODDBR exception or number of strings readed*/
-int read_str(list *head, const int *def_str_size)
+int read_command(list *head, int *exec_stat, const int *def_str_size)
 {
   char tmp;
   int str_len = 0, str_count = 1;
@@ -191,7 +183,8 @@ int read_str(list *head, const int *def_str_size)
         list_allocate_next(&head, def_str_size);
         continue;
     }
-    eow_flag = 0;
+    eow_flag = 0; 
+    *exec_stat = (tmp == '&' && !brace_flag) ? SLNT : NORM;
     list_write_char(head, &str_len, &tmp, def_str_size);
   }
   return check_errors(&brace_flag, &eow_flag, &str_count); 
@@ -200,22 +193,23 @@ int read_str(list *head, const int *def_str_size)
 int stream(const int def_str_size)
 {
   int res, str_count = 0;
+  int exec_stat = NORM;
   list *head;
 
   list_init(&head, &def_str_size);
-  res = read_str(head, &def_str_size);
+  res = read_command(head, &exec_stat, &def_str_size);
   while(res != EOF){
     if(res == ODDBR){
       fprintf(stderr, "Odd number of quotation marks\n");
     } else { 
       if(*head->str != '\0') { /* Check empty input*/
-        list_exec(head, &res);
+        list_exec(head, &res, &exec_stat);
         str_count += 1;
       }
     }
     list_free(head);
     list_init(&head, &def_str_size);
-    res = read_str(head, &def_str_size);
+    res = read_command(head, &exec_stat, &def_str_size);
   }
   list_free(head);
   return str_count;  
