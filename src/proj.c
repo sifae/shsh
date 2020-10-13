@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <wait.h>
+#include <dirent.h>
 #include "proj.h"
 
 void check_allocated_mem(void *ptr)
@@ -12,27 +13,15 @@ void check_allocated_mem(void *ptr)
   }
 }
 
-/* Return 'parsing' status: 0(succ) or 1(fail)*/
-int form_exec_argv(char **dest, const list *src, 
-                   const int *len, const int *exec_stat)
+void form_exec_argv(char **dest, const list *src, 
+                   const int *len)
 {
   int i;
-  /* Check single '&' char*/
-  if(*src->str == '&' && *exec_stat == SLNT){ 
-    fprintf(stderr, "Error parsing '&'\n");
-    return 1;
-  }
-  for(i = 0; i < *len - 1; i++){
+  for(i = 0; i < *len; i++){
     dest[i] = src->str;
     src = src->next;
   }
-  if(*exec_stat == SLNT){/* Ignore last '&'*/
-    dest[i] = NULL;
-    return 0;
-  }
-  dest[i] = src->str;
-  dest[i+1] = NULL;
-  return 0;
+  dest[i] = NULL;
 }
 
 void exec_command(char *const *argv, const int *status)
@@ -65,6 +54,31 @@ void exec_command(char *const *argv, const int *status)
   execvp(argv[0], argv);
   perror(argv[0]);
   exit(1);
+}
+
+/* 0 - Not a cd command, 1 - correct cd command*/
+/* -1 - Not correct cd command*/
+int check_cd(char *const *argv)
+{
+  if(**argv == 'c' &&
+     *(*argv+1) == 'd' && 
+     *(*argv+2) == '\0'){
+    if(*(argv+2) == NULL && *(argv+1) != NULL)
+      return 1;
+    else{ 
+      fprintf(stderr, "cd: Wrong number of arguments\n");
+      return -1;
+    }
+  }
+  return 0;
+}
+
+void exec_cd(char const *argv)
+{ 
+  int res;
+  res = chdir(argv);
+  if(res != 0)
+    fprintf(stderr, "%s Not a directory", argv);
 }
 
 void list_free(list *head)
@@ -125,11 +139,14 @@ void list_print(const list *head, const int n)
 void list_exec(const list *head, const int *len, const int *exec_stat)
 { 
   char **exec_argv;
-  int res;
+  int cd_check_res;
   /* Add position for NULL pointer*/
   exec_argv = malloc((*len+1) * sizeof(*exec_argv)); 
-  res = form_exec_argv(exec_argv, head, len, exec_stat);
-  if(res == 0)
+  form_exec_argv(exec_argv, head, len);
+  cd_check_res = check_cd(exec_argv);
+  if(cd_check_res == 1)
+    exec_cd(exec_argv[1]);
+  if(cd_check_res == 0)
     exec_command(exec_argv, exec_stat);
   free(exec_argv);
 }
@@ -137,13 +154,10 @@ void list_exec(const list *head, const int *len, const int *exec_stat)
 void prompt()
 {
   long size = pathconf(".", _PC_PATH_MAX);
-  char cwd[size];
-  if(getcwd(cwd, size) != NULL) {
-     printf(BLU "%s" RESET " " RED "$" RESET " ", cwd);
-  } else {
-     perror("getcwd");
-     exit(1);
-  }
+  char *cwd = malloc(size * sizeof(*cwd));
+  check_allocated_mem(cwd);
+  getcwd(cwd, size);
+  printf("%s $ ", cwd);
 }
 
 int check_errors(const int *brace_flag, 
@@ -186,9 +200,11 @@ int read_command(list *head, int *exec_stat, const int *def_str_size)
         eow_flag = 1; str_len = 0; str_count += !brace_flag;   
         list_allocate_next(&head, def_str_size);
         continue;
+      case '&':
+        *exec_stat = !brace_flag ? SLNT : NORM;
+        continue;
     }
     eow_flag = 0; 
-    *exec_stat = (tmp == '&' && !brace_flag) ? SLNT : NORM;
     list_write_char(head, &str_len, &tmp, def_str_size);
   }
   return check_errors(&brace_flag, &eow_flag, &str_count); 
@@ -213,6 +229,7 @@ int stream(const int def_str_size)
     }
     list_free(head);
     list_init(&head, &def_str_size);
+    exec_stat = NORM;
     res = read_command(head, &exec_stat, &def_str_size);
   }
   list_free(head);
