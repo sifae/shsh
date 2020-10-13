@@ -12,7 +12,7 @@ void check_allocated_mem(void *ptr)
   }
 }
 
-/* Return 'parsing' status: 0 or 1*/
+/* Return 'parsing' status: 0(succ) or 1(fail)*/
 int form_exec_argv(char **dest, const list *src, 
                    const int *len, const int *exec_stat)
 {
@@ -44,12 +44,15 @@ void exec_command(char *const *argv, const int *status)
     exit(1);
   }
   if(pid > 0){
-    if(*status == SLNT) 
+    if(*status == SLNT){
       printf("%d Started\n", pid);
-    else
-      /* Terminate background processes*/
+      while((p = waitpid(-1, NULL, WNOHANG)) > 0)
+        printf("%d Terminated\n", p);
+    } else {
+      /* Terminate background processes in Normal mode*/
       while((p = wait(NULL)) != pid) 
         printf("%d Terminated\n", p);
+    }
     return;
   }
   /* Child process*/
@@ -158,6 +161,7 @@ int check_errors(const int *brace_flag,
 }
 
 /* Return EOF exception, ODDBR exception or number of strings readed*/
+/* Also set execution state flag - NORMAL or SILENT*/
 int read_command(list *head, int *exec_stat, const int *def_str_size)
 {
   char tmp;
