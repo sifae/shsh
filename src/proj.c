@@ -63,7 +63,7 @@ int check_cd(char *const *argv)
   if(**argv == 'c' &&
      *(*argv+1) == 'd' && 
      *(*argv+2) == '\0'){
-    if(*(argv+2) == NULL && *(argv+1) != NULL)
+    if(argv[1] != NULL && argv[2] == NULL)
       return 1;
     else{ 
       fprintf(stderr, "cd: Wrong number of arguments\n");
@@ -78,7 +78,7 @@ void exec_cd(char const *argv)
   int res;
   res = chdir(argv);
   if(res != 0)
-    fprintf(stderr, "%s Not a directory", argv);
+    fprintf(stderr, "'%s' Not a directory\n", argv);
 }
 
 void list_free(list *head)
@@ -158,6 +158,7 @@ void prompt()
   check_allocated_mem(cwd);
   getcwd(cwd, size);
   printf("%s $ ", cwd);
+  free(cwd);
 }
 
 int check_errors(const int *brace_flag, 
@@ -192,17 +193,21 @@ int read_command(list *head, int *exec_stat, const int *def_str_size)
         continue;
       case ' ': 
         if(eow_flag)              /* Handle multiple spaces case*/
-          continue; 
+          continue;
         if(brace_flag){           /* Handle "abc def" case*/
           list_write_char(head, &str_len, &tmp, def_str_size);
           continue;
         }
-        eow_flag = 1; str_len = 0; str_count += !brace_flag;   
-        list_allocate_next(&head, def_str_size);
+        if(*head->str != '\0'){   /* Command starts with spaces*/
+          list_allocate_next(&head, def_str_size);
+          eow_flag = 1; str_len = 0; str_count += !brace_flag;   
+        }
         continue;
       case '&':
-        *exec_stat = !brace_flag ? SLNT : NORM;
-        continue;
+        if(!brace_flag){ 
+          *exec_stat = SLNT;
+          continue;
+        }
     }
     eow_flag = 0; 
     list_write_char(head, &str_len, &tmp, def_str_size);
@@ -222,7 +227,7 @@ int stream(const int def_str_size)
     if(res == ODDBR){
       fprintf(stderr, "Odd number of quotation marks\n");
     } else { 
-      if(*head->str != '\0') { /* Check empty input*/
+      if(*head->str != '\0'){   /* Check empty input*/
         list_exec(head, &res, &exec_stat);
         str_count += 1;
       }

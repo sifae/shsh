@@ -2,10 +2,6 @@
 #define SLNT 1  /*  Execution  status*/
 #define NORM 0  /*  Execution  status*/
 
-#define RED   "\x1B[31m"
-#define BLU   "\x1B[34m"
-#define RESET "\x1B[0m"
-
 typedef struct list list; 
 
 struct list {
