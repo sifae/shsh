@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <wait.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include "proj.h"
 
 void check_allocated_mem(void *ptr)
@@ -22,6 +23,17 @@ void form_exec_argv(char **dest, const list *src,
     src = src->next;
   }
   dest[i] = NULL;
+}
+
+void stdio_to_null()
+{
+  int i = 0; 
+  close(0);
+  close(1);
+  close(2);
+  i=open("/dev/null", O_RDWR);
+  dup(i);
+  dup(i);
 }
 
 void exec_command(char *const *argv, const int *status)
@@ -45,12 +57,8 @@ void exec_command(char *const *argv, const int *status)
     return;
   }
   /* Child process*/
-  if(*status == SLNT){
-    /* Close stdin, stdout and stderr*/
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
-  }
+  if(*status == SLNT)
+    stdio_to_null();
   execvp(argv[0], argv);
   perror(argv[0]);
   exit(1);
@@ -93,7 +101,7 @@ void list_free(list *head)
 }
 
 void list_write_char(list *head, int *pos, 
-                     const char *tmp, 
+                     const int *tmp, 
                      const int *def_str_size)
 {
   /* If the string length is <n> times <def_str_size>*/
@@ -179,7 +187,7 @@ int check_errors(const int *brace_flag,
 /* Also set execution state flag - NORMAL or SILENT*/
 int read_command(list *head, int *exec_stat, const int *def_str_size)
 {
-  char tmp;
+  int tmp;
   int str_len = 0, str_count = 1;
   int brace_flag = 0;             /* Open br => 1, Cl br => 0*/
   int eow_flag = 0;               /* End of word flag*/
