@@ -1,21 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <wait.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include "proj.h"
 
-void check_allocated_mem(void *ptr)
-{
-  if(!ptr){
-    fprintf(stderr, "Allocation error\n");
-    exit(1);
-  }
-}
-
 void form_exec_argv(char **dest, const list *src, 
-                   const int *len)
+                    const int *len)
 {
   int i;
   for(i = 0; i < *len; i++){
@@ -31,8 +24,8 @@ void stdio_to_null()
   close(0);
   close(1);
   close(2);
-  i=open("/dev/null", O_RDWR);
-  dup(i);
+  i=open("/dev/null", O_RDWR);  /* Stdin*/
+  dup(i); /* Stdout*/
   dup(i);
 }
 
@@ -68,13 +61,11 @@ void exec_command(char *const *argv, const int *status)
 /* -1 - Not correct cd command*/
 int check_cd(char *const *argv)
 {
-  if(**argv == 'c' &&
-     *(*argv+1) == 'd' && 
-     *(*argv+2) == '\0'){
+  if(strcmp(*argv, "cd") == 0){
     if(argv[1] != NULL && argv[2] == NULL)
       return 1;
     else{ 
-      fprintf(stderr, "cd: Wrong number of arguments\n");
+      fprintf(stderr, "shsh:cd: wrong number of arguments\n");
       return -1;
     }
   }
@@ -86,7 +77,7 @@ void exec_cd(char const *argv)
   int res;
   res = chdir(argv);
   if(res != 0)
-    fprintf(stderr, "'%s' Not a directory\n", argv);
+    fprintf(stderr, "shsh: '%s' not a directory\n", argv);
 }
 
 void list_free(list *head)
@@ -101,15 +92,15 @@ void list_free(list *head)
 }
 
 void list_write_char(list *head, int *pos, 
-                     const int *tmp, 
+                     const char *tmp, 
                      const int *def_str_size)
 {
   /* If the string length is <n> times <def_str_size>*/
   /* reallocate <n+1>*<def_str_size> as much memory for it*/
   /* Handle only boundary case*/
   if((*pos-1) / *def_str_size != *pos / *def_str_size){
-    head->str = realloc(head->str, *def_str_size * (*pos / *def_str_size+1));
-    check_allocated_mem(head->str);
+    head->str = realloc(head->str, 
+        *def_str_size * (*pos / *def_str_size+1));
   }
   head->str[*pos] = *tmp;
   (*pos)++;
@@ -119,19 +110,15 @@ void list_write_char(list *head, int *pos,
 void list_allocate_next(list **head, const int *def_str_size)
 {
   (*head)->next = malloc(sizeof(**head));
-  check_allocated_mem((*head)->next);
   *head = (*head)->next;
   (*head)->str = calloc(*def_str_size + 1, sizeof(*(*head)->str));
-  check_allocated_mem((*head)->str);
   (*head)->next = NULL;
 }
 
 void list_init(list **head, const int *def_str_size)
 {
   *head = malloc(sizeof(**head));
-  check_allocated_mem(*head);
   (*head)->str = calloc(*def_str_size + 1, sizeof(*(*head)->str));
-  check_allocated_mem((*head)->str);
   (*head)->next = NULL;
 }
 
@@ -163,7 +150,6 @@ void prompt()
 {
   long size = pathconf(".", _PC_PATH_MAX);
   char *cwd = malloc(size * sizeof(*cwd));
-  check_allocated_mem(cwd);
   getcwd(cwd, size);
   printf("%s $ ", cwd);
   free(cwd);
@@ -171,11 +157,18 @@ void prompt()
 
 int check_errors(const int *brace_flag, 
                  const int *eow_flag, 
-                 const int *str_count)
+                 const int *str_count,
+                 const char *prserr_chr)
 {
   /* Handle odd number of braces case*/
-  if(*brace_flag)
-    return ODDBR;
+  if(*brace_flag){
+    fprintf(stderr, "shsh: odd number of quotation marks\n");
+    return PRSERR;
+  }
+  if(*prserr_chr != 0){
+    fprintf(stderr, "shsh: parse error near '%c'\n", *prserr_chr); 
+    return PRSERR; 
+  }
   /* Current line ends with spaces*/
   if(*eow_flag){
     return *str_count - 1; 
@@ -183,11 +176,42 @@ int check_errors(const int *brace_flag,
   return *str_count;
 }
 
+int set_exec_st(int *exec_st, 
+                const char *chr, 
+                const char *prev_chr)
+{
+  switch(*chr){
+    case '&':
+      if((*exec_st & SLNT) != 0)
+        return '&';
+      *exec_st |= SLNT;
+      break;
+    case '<':
+      if((*exec_st & REDIR_STDIN) != 0)
+        return '<';
+      *exec_st |= REDIR_STDIN;
+      break;
+    case '>':
+      if((*exec_st & REDIR_STDOUTA) != 0)
+        return '>'; /* More than two '>'*/
+      if((*exec_st & REDIR_STDOUTW) != 0 && *prev_chr != '>')
+        return '>';
+      *exec_st |= REDIR_STDOUTW;
+      if(*prev_chr == '>'){
+        *exec_st &= 15 ^ REDIR_STDOUTW; /* Set STDOUTW to 0*/
+        *exec_st |= REDIR_STDOUTA;
+      }
+      break;
+  }
+  return 0;
+}
+
 /* Return EOF exception, ODDBR exception or number of strings readed*/
-/* Also set execution state flag - NORMAL or SILENT*/
+/* Also set execution state flag*/
 int read_command(list *head, int *exec_stat, const int *def_str_size)
 {
   int tmp;
+  char prs_res = 0;
   int str_len = 0, str_count = 1;
   int brace_flag = 0;             /* Open br => 1, Cl br => 0*/
   int eow_flag = 0;               /* End of word flag*/
@@ -203,7 +227,7 @@ int read_command(list *head, int *exec_stat, const int *def_str_size)
         if(eow_flag)              /* Handle multiple spaces case*/
           continue;
         if(brace_flag){           /* Handle "abc def" case*/
-          list_write_char(head, &str_len, &tmp, def_str_size);
+          list_write_char(head, &str_len, (char*)&tmp, def_str_size);
           continue;
         }
         if(*head->str != '\0'){   /* Command starts with spaces*/
@@ -211,16 +235,13 @@ int read_command(list *head, int *exec_stat, const int *def_str_size)
           eow_flag = 1; str_len = 0; str_count += !brace_flag;   
         }
         continue;
-      case '&':
-        if(!brace_flag){ 
-          *exec_stat = SLNT;
-          continue;
-        }
     }
+    if(prs_res == 0 && !brace_flag) /* Wait till end of string*/
+      prs_res = set_exec_st(exec_stat, (char*)&tmp, head->str);
     eow_flag = 0; 
-    list_write_char(head, &str_len, &tmp, def_str_size);
+    list_write_char(head, &str_len, (char*)&tmp, def_str_size);
   }
-  return check_errors(&brace_flag, &eow_flag, &str_count); 
+  return check_errors(&brace_flag, &eow_flag, &str_count, &prs_res); 
 }
 
 int stream(const int def_str_size)
@@ -231,14 +252,11 @@ int stream(const int def_str_size)
 
   list_init(&head, &def_str_size);
   res = read_command(head, &exec_stat, &def_str_size);
-  while(res != EOF){
-    if(res == ODDBR){
-      fprintf(stderr, "Odd number of quotation marks\n");
-    } else { 
-      if(*head->str != '\0'){   /* Check empty input*/
-        list_exec(head, &res, &exec_stat);
-        str_count += 1;
-      }
+  while(res != EOF){ 
+    /* Check empty input and errors while parsing*/
+    if((res != PRSERR) && *head->str != '\0'){   
+      list_exec(head, &res, &exec_stat);
+      str_count += 1;
     }
     list_free(head);
     list_init(&head, &def_str_size);

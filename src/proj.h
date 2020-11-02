@@ -1,6 +1,10 @@
-#define ODDBR 0 /* 'Exception' status*/
-#define SLNT 1  /*  Execution  status*/
-#define NORM 0  /*  Execution  status*/
+#define PRSERR 0  /* Error parsing command*/
+
+#define NORM 0  /* Execute in standart mode */
+#define SLNT 1  /* Execute in background    */
+#define REDIR_STDIN   2  /* Stdin  redirection (<)   */
+#define REDIR_STDOUTW 4  /* Stdout redirection (>)   */
+#define REDIR_STDOUTA 8  /* Stdout redirection (>>)  */
 
 typedef struct list list; 
 
