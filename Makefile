@@ -2,8 +2,8 @@ CC=gcc
 SRCDIR=./src
 OBJDIR=./obj
 CFLAGS=-I$(SRCDIR) -Wall -g -o
-HEADERS=proj.h
-SOURCES=proj.c main.c
+HEADERS=shell.h list.h
+SOURCES=shell.c list.c main.c
 TARGET=shsh
 OBJ:=$(SOURCES:.c=.o) $(HEADERS:.h=.o)
 OBJ:=$(addprefix $(OBJDIR)/,$(OBJ))
