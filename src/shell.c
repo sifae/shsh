@@ -33,7 +33,7 @@ void stdio_to_null()
   dup(i); /* Stderr*/
 }
 
-int flag_check_redir(int flag)
+int flag_check_redir(const int flag)
 {
   int redir_flags = REDIR_STDIN | REDIR_STDOUTA | REDIR_STDOUTW;
   return (flag & redir_flags) != 0;
@@ -49,13 +49,13 @@ void exec_command(char *const *argv, const int *status)
   }
   if(pid > 0){
     if((*status & SLNT) != 0){
-      printf("%d Started\n", pid);
+      fprintf(stderr, "%d Started\n", pid);
       while((p = waitpid(-1, NULL, WNOHANG)) > 0)
-        printf("%d Terminated\n", p);
+        fprintf(stderr, "%d Terminated\n", p);
     } else {
       /* Terminate background processes in Normal mode*/
       while((p = wait(NULL)) != pid) 
-        printf("%d Terminated\n", p);
+        fprintf(stderr, "%d Terminated\n", p);
     }
     return;
   }
@@ -131,7 +131,9 @@ int read_str(char *buf, const int *def_str_size)
       /* Add space before >,>>,<,&*/
       if(strchr("><&", tmp) != NULL && 
         (tmp != '>' || buf[str_len-1] != '>'))
-          buf_write_char(buf, &str_len, ' ', def_str_size);
+      {
+        buf_write_char(buf, &str_len, ' ', def_str_size);
+      }
       /* Remove spaces after >,>>,<*/
       if(tmp == ' ' && strchr("<>",buf[str_len-1]) != NULL)
         continue;
@@ -165,8 +167,7 @@ int cmd_error_hdl(const char *file,char *operation,
                   int *exec_stat,int flag_check)
 {
   char *fmt_wrong_cmd = "shsh: parse error near '%s'\n";
-  char *fmt_file_expt = "shsh: parse error near '%s': \
-                         expected file name\n";
+  char *fmt_file_expt = "shsh: parse error near '%s': expected file name\n";
   if((*exec_stat & flag_check) != 0){ /* Multiple special chars*/
     fprintf(stderr, fmt_wrong_cmd, operation);
     return 1;
@@ -195,16 +196,16 @@ int cmd_prs_check_set(const char *cmd, char *instruct, int *exec_stat,
   return 0;
 }
 
-int redirect(char *file, int srcfd, int mode)
+int redirect(char *file, int srcfd, int flag)
 {
-  int filefd; 
-  filefd = open(file, mode, 777);
-  if(filefd == -1){
+  int fd; 
+  fd = open(file, flag, 00700);
+  if(fd == -1){
     perror("shsh:open");
     return 1;
   }
-  dup2(filefd, srcfd);
-  close(filefd);
+  dup2(fd, srcfd);
+  close(fd);
   return 0;
 }
 
@@ -221,22 +222,25 @@ int exec_custom_cmd(char *cmd, int *exec_stat)
   int flag_set[] = {REDIR_STDIN,REDIR_STDOUTA,REDIR_STDOUTW};
   int fd[] = {0, 1, 1};
   int fd_mode[] = {
-    O_RDONLY | O_CREAT,
-    O_APPEND | O_CREAT, 
+    O_RDONLY,
+    O_WRONLY | O_CREAT | O_APPEND, 
     O_WRONLY | O_CREAT | O_TRUNC};
 
   prs_res = cmd_prs_check_set(cmd,"&",exec_stat,SLNT,SLNT);
-  if(prs_res != 0) return prs_res;
+  if(prs_res != 0) 
+    return prs_res;
 
-  for(i = 0; i < 3; i++){
+  for(i = 0; i < sizeof(operators)/sizeof(*operators); i++){
     prs_res = cmd_prs_check_set(cmd, operators[i], exec_stat,
                             flag_check[i], flag_set[i]);
-    if(prs_res == PRSERROR) return PRSERROR;
+    if(prs_res == PRSERROR) 
+      return PRSERROR;
     if(prs_res != 0){
       filename = cmd + strlen(operators[i]);
       rm_braces(filename);
       redir_res = redirect(filename, fd[i], fd_mode[i]);
-      if(redir_res != 0) return PRSERROR;
+      if(redir_res != 0) 
+        return PRSERROR;
       return PRSIGNORE;
     }
   }
@@ -249,7 +253,8 @@ int handle_cmd(list **lst, char *cmd, int *len,
 {
   int prs_res;
   prs_res = exec_custom_cmd(cmd, exec_stat);
-  if(prs_res == PRSERROR) return 1;
+  if(prs_res == PRSERROR) 
+    return 1;
   if(prs_res != PRSIGNORE){
     strcpy((*lst)->str, cmd);
     list_allocate_next(lst, def_str_size);
@@ -269,13 +274,15 @@ int split_command(list *lst, char *buf, int *len,
   while(next != NULL){
     next[0] = '\0';
     res = handle_cmd(&lst, buf, len, exec_stat, def_str_size);
-    if(res != 0) return 1; 
+    if(res != 0) 
+      return 1; 
     buf = skip_white(next + 1);
     next = strchr(buf, ' ');
   }	
   if(*buf != '\0'){
     res = handle_cmd(&lst, buf, len, exec_stat, def_str_size);
-    if(res != 0) return 1; 
+    if(res != 0) 
+      return 1; 
   }
   if(*lst->str == '\0') 
     list_rm_last(head);
